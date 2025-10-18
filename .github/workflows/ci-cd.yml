@@ -1,0 +1,108 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore Api/Api.csproj
+    
+    - name: Build
+      run: dotnet build Api/Api.csproj --no-restore
+    
+    - name: Test
+      run: dotnet test Api/Api.csproj --no-build --verbosity normal
+    
+    - name: Run migrations
+      run: dotnet ef database update --project Api/Api.csproj
+    
+    - name: API Health Check
+      run: |
+        dotnet run --project Api/Api.csproj &
+        sleep 10
+        curl -f http://localhost:5152/api/Health || exit 1
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: npm ci --prefix frontend
+    
+    - name: Build
+      run: npm run build --prefix frontend
+    
+    - name: Test
+      run: npm test --prefix frontend -- --coverage --watchAll=false
+    
+    - name: Lint
+      run: npm run lint --prefix frontend
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  deploy-staging:
+    needs: [backend-test, frontend-test, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to Staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your staging deployment commands here
+
+  deploy-production:
+    needs: [backend-test, frontend-test, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to Production
+      run: |
+        echo "Deploying to production environment..."
+        # Add your production deployment commands here

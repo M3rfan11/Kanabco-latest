@@ -32,6 +32,7 @@ namespace Api.DTOs
         public DateTime? DeliveryDate { get; set; }
         public string? Status { get; set; }
         public string? PaymentStatus { get; set; }
+        public decimal? DownPayment { get; set; }
         public string? Notes { get; set; }
     }
 
@@ -71,22 +72,42 @@ namespace Api.DTOs
         public int Id { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
         public string? CustomerName { get; set; }
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
+        public string? CustomerAddress { get; set; }
         public DateTime OrderDate { get; set; }
         public DateTime? DeliveryDate { get; set; }
         public decimal TotalAmount { get; set; }
+        public decimal? DownPayment { get; set; }
         public string Status { get; set; } = string.Empty;
         public string PaymentStatus { get; set; } = string.Empty;
+        public string? Notes { get; set; }
         public string CreatedByUserName { get; set; } = string.Empty;
         public string? ConfirmedByUserName { get; set; }
+        public List<SalesItemResponse> Items { get; set; } = new List<SalesItemResponse>();
+        // Promo code information
+        public PromoCodeUsageInfo? PromoCode { get; set; }
+    }
+
+    public class PromoCodeUsageInfo
+    {
+        public int PromoCodeId { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public decimal DiscountAmount { get; set; }
+        public DateTime UsedAt { get; set; }
+        public int? UserId { get; set; }
+        public string? UserName { get; set; }
     }
 
     public class SalesItemResponse
     {
         public int Id { get; set; }
         public int ProductId { get; set; }
+        public int? ProductVariantId { get; set; }
         public string ProductName { get; set; } = string.Empty;
         public string ProductSKU { get; set; } = string.Empty;
         public string ProductDescription { get; set; } = string.Empty;
+        public string? VariantAttributes { get; set; }
         public int WarehouseId { get; set; }
         public string WarehouseName { get; set; } = string.Empty;
         public decimal Quantity { get; set; }
@@ -226,5 +247,20 @@ namespace Api.DTOs
         public DateTime SaleDate { get; set; }
         public string CashierName { get; set; } = string.Empty;
         public int ItemCount { get; set; }
+    }
+
+    public class CustomerSummaryResponse
+    {
+        public string? Email { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string? Address { get; set; }
+        public bool IsRegistered { get; set; }
+        public int? UserId { get; set; }
+        public int OrderCount { get; set; }
+        public decimal TotalSpent { get; set; }
+        public DateTime FirstOrderDate { get; set; }
+        public DateTime? LastOrderDate { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 }

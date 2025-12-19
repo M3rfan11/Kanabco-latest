@@ -4,13 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using Api.Data;
 using Api.DTOs;
 using Api.Services;
+using Api.Attributes;
 using System.Security.Claims;
 
 namespace Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize] // All endpoints require authentication
+// [Authorize] // Removed class-level authorize - add to individual methods as needed
 public class DashboardController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -49,11 +50,11 @@ public class DashboardController : ControllerBase
                 TotalProducts = await _context.Products.CountAsync(p => p.IsActive),
                 TotalWarehouses = await _context.Warehouses.CountAsync(),
                 TotalUsers = await _context.Users.CountAsync(u => u.IsActive),
-                TotalInventory = await _context.ProductInventories.SumAsync(pi => pi.Quantity + pi.POSQuantity),
+                TotalInventory = await _context.ProductInventories.SumAsync(pi => pi.Quantity),
                 PendingPurchases = await _context.PurchaseOrders.CountAsync(po => po.Status == "Pending"),
                 PendingSales = await _context.SalesOrders.CountAsync(so => so.Status == "Pending"),
                 LowStockItems = await _context.ProductInventories
-                    .CountAsync(pi => (pi.Quantity + pi.POSQuantity) <= pi.MinimumStockLevel),
+                    .CountAsync(pi => pi.Quantity <= pi.MinimumStockLevel),
                 TotalRevenue = totalRevenue, // Real-time revenue from tracking service
                 TotalCosts = totalCosts, // Real-time costs from tracking service
                 PendingRequests = await _context.ProductRequests.CountAsync(pr => pr.Status == "Pending"),
@@ -145,10 +146,226 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// Get low stock items for both products and variants
+    /// </summary>
+    [HttpGet("low-stock-items")]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<LowStockItemResponse>>> GetLowStockItems()
+    {
+        try
+        {
+            _logger.LogInformation("=== GetLowStockItems endpoint called - NEW CODE ===");
+            Console.WriteLine("=== GetLowStockItems endpoint called - NEW CODE ===");
+            var lowStockItems = new List<LowStockItemResponse>();
+
+            // Load all product inventories with related data - only active products
+            var productInventories = await _context.ProductInventories
+                .Include(pi => pi.Product)
+                .Include(pi => pi.Warehouse)
+                .Where(pi => pi.Product != null && 
+                             pi.Warehouse != null && 
+                             pi.Product.IsActive)
+                .ToListAsync();
+
+            // Filter for low stock product inventories
+            foreach (var pi in productInventories)
+            {
+                var product = pi.Product!;
+                var warehouse = pi.Warehouse!;
+                
+                // Skip products that are always available - they don't need inventory tracking
+                if (product.AlwaysAvailable)
+                {
+                    continue;
+                }
+                
+                // Check if this is a low stock item
+                bool isLowStock = false;
+                
+                // Out of stock
+                if (pi.Quantity == 0)
+                {
+                    isLowStock = true;
+                }
+                // Or quantity is at or below minimum stock level
+                else if (pi.MinimumStockLevel.HasValue && pi.Quantity <= pi.MinimumStockLevel.Value)
+                {
+                    isLowStock = true;
+                }
+                // Or quantity is within 2 units above minimum (warning zone)
+                else if (pi.MinimumStockLevel.HasValue && pi.Quantity <= (pi.MinimumStockLevel.Value + 2))
+                {
+                    isLowStock = true;
+                }
+
+                if (isLowStock)
+                {
+                    var isOutOfStock = pi.Quantity == 0;
+                    var isNotAvailable = isOutOfStock && !product.AlwaysAvailable && !product.SellWhenOutOfStock;
+                    
+                    // Determine severity
+                    string severity;
+                    if (isOutOfStock)
+                    {
+                        severity = "Critical";
+                    }
+                    else if (pi.MinimumStockLevel.HasValue && pi.Quantity < pi.MinimumStockLevel.Value * 0.5m)
+                    {
+                        severity = "High";
+                    }
+                    else if (pi.MinimumStockLevel.HasValue && pi.Quantity <= pi.MinimumStockLevel.Value)
+                    {
+                        severity = "Medium";
+                    }
+                    else
+                    {
+                        severity = "Low";
+                    }
+
+                    // Use product unit if available, otherwise use inventory unit, default to "piece"
+                    var displayUnit = product.Unit ?? pi.Unit ?? "piece";
+                    // Normalize "bottle" to "piece" for furniture items
+                    if (displayUnit == "bottle")
+                    {
+                        displayUnit = "piece";
+                    }
+
+                    lowStockItems.Add(new LowStockItemResponse
+                    {
+                        Type = "Product",
+                        Id = pi.Id,
+                        ProductId = product.Id,
+                        ProductName = product.Name ?? "Unknown Product",
+                        ProductSKU = product.SKU,
+                        VariantId = null,
+                        VariantAttributes = null,
+                        WarehouseId = warehouse.Id,
+                        WarehouseName = warehouse.Name ?? "Unknown Warehouse",
+                        Quantity = pi.Quantity,
+                        Unit = displayUnit,
+                        MinimumStockLevel = pi.MinimumStockLevel,
+                        MaximumStockLevel = pi.MaximumStockLevel,
+                        IsOutOfStock = isOutOfStock,
+                        IsNotAvailable = isNotAvailable,
+                        Severity = severity,
+                        UpdatedAt = pi.UpdatedAt
+                    });
+                }
+            }
+
+            // Load all variant inventories with related data - only active products
+            var variantInventories = await _context.VariantInventories
+                .Include(vi => vi.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .Include(vi => vi.Warehouse)
+                .Where(vi => vi.ProductVariant != null && 
+                             vi.ProductVariant.Product != null && 
+                             vi.ProductVariant.Product.IsActive &&
+                             vi.Warehouse != null)
+                .ToListAsync();
+
+            // Filter for low stock variant inventories
+            foreach (var vi in variantInventories)
+            {
+                var variant = vi.ProductVariant!;
+                var product = variant.Product!;
+                var warehouse = vi.Warehouse!;
+                
+                // Skip products that are always available - they don't need inventory tracking
+                if (product.AlwaysAvailable)
+                {
+                    continue;
+                }
+                
+                // Check if this is a low stock item
+                bool isLowStock = false;
+                
+                // Out of stock
+                if (vi.Quantity == 0)
+                {
+                    isLowStock = true;
+                }
+                // Or quantity is at or below minimum stock level
+                else if (vi.MinimumStockLevel.HasValue && vi.Quantity <= vi.MinimumStockLevel.Value)
+                {
+                    isLowStock = true;
+                }
+                // Or quantity is within 2 units above minimum (warning zone)
+                else if (vi.MinimumStockLevel.HasValue && vi.Quantity <= (vi.MinimumStockLevel.Value + 2))
+                {
+                    isLowStock = true;
+                }
+
+                if (isLowStock)
+                {
+                    var isOutOfStock = vi.Quantity == 0;
+                    var isNotAvailable = isOutOfStock && !product.AlwaysAvailable && !product.SellWhenOutOfStock;
+                    
+                    // Determine severity
+                    string severity;
+                    if (isOutOfStock)
+                    {
+                        severity = "Critical";
+                    }
+                    else if (vi.MinimumStockLevel.HasValue && vi.Quantity < vi.MinimumStockLevel.Value * 0.5m)
+                    {
+                        severity = "High";
+                    }
+                    else if (vi.MinimumStockLevel.HasValue && vi.Quantity <= vi.MinimumStockLevel.Value)
+                    {
+                        severity = "Medium";
+                    }
+                    else
+                    {
+                        severity = "Low";
+                    }
+
+                    // Use product unit if available, otherwise use inventory unit, default to "piece"
+                    var variantDisplayUnit = product.Unit ?? vi.Unit ?? "piece";
+                    // Normalize "bottle" to "piece" for furniture items
+                    if (variantDisplayUnit == "bottle")
+                    {
+                        variantDisplayUnit = "piece";
+                    }
+
+                    lowStockItems.Add(new LowStockItemResponse
+                    {
+                        Type = "Variant",
+                        Id = vi.Id,
+                        ProductId = product.Id,
+                        ProductName = product.Name ?? "Unknown Product",
+                        ProductSKU = product.SKU,
+                        VariantId = variant.Id,
+                        VariantAttributes = variant.Attributes,
+                        WarehouseId = warehouse.Id,
+                        WarehouseName = warehouse.Name ?? "Unknown Warehouse",
+                        Quantity = vi.Quantity,
+                        Unit = variantDisplayUnit,
+                        MinimumStockLevel = vi.MinimumStockLevel,
+                        MaximumStockLevel = vi.MaximumStockLevel,
+                        IsOutOfStock = isOutOfStock,
+                        IsNotAvailable = isNotAvailable,
+                        Severity = severity,
+                        UpdatedAt = vi.UpdatedAt
+                    });
+                }
+            }
+
+            _logger.LogInformation($"Returning {lowStockItems.Count} low stock items");
+            return Ok(lowStockItems.OrderBy(item => item.Quantity).ThenBy(item => item.Severity));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving low stock items: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while retrieving low stock items", error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Refresh revenue and cost totals (Admin only)
     /// </summary>
     [HttpPost("refresh-totals")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RefreshTotals()
     {
         try

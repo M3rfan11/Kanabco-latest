@@ -13,11 +13,16 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Role> Roles { get; set; }
     public DbSet<UserRole> UserRoles { get; set; }
+    public DbSet<Permission> Permissions { get; set; }
+    public DbSet<RolePermission> RolePermissions { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Category> Categories { get; set; }
     public DbSet<Product> Products { get; set; }
+    public DbSet<ProductCategory> ProductCategories { get; set; }
+    public DbSet<ProductVariant> ProductVariants { get; set; }
     public DbSet<Warehouse> Warehouses { get; set; }
     public DbSet<ProductInventory> ProductInventories { get; set; }
+    public DbSet<VariantInventory> VariantInventories { get; set; }
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<PurchaseItem> PurchaseItems { get; set; }
     public DbSet<SalesOrder> SalesOrders { get; set; }
@@ -31,6 +36,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShoppingCart> ShoppingCarts { get; set; }
     public DbSet<OrderTracking> OrderTrackings { get; set; }
     public DbSet<Customer> Customers { get; set; }
+    public DbSet<PromoCode> PromoCodes { get; set; }
+    public DbSet<PromoCodeUser> PromoCodeUsers { get; set; }
+    public DbSet<PromoCodeProduct> PromoCodeProducts { get; set; }
+    public DbSet<PromoCodeUsage> PromoCodeUsages { get; set; }
+    public DbSet<Wishlist> Wishlists { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +80,32 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // Configure Permission entity
+        modelBuilder.Entity<Permission>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Name).IsRequired();
+            entity.Property(e => e.Resource).IsRequired();
+            entity.Property(e => e.Action).IsRequired();
+        });
+
+        // Configure RolePermission entity (many-to-many)
+        modelBuilder.Entity<RolePermission>(entity =>
+        {
+            entity.HasKey(e => new { e.RoleId, e.PermissionId });
+            
+            entity.HasOne(e => e.Role)
+                .WithMany(r => r.RolePermissions)
+                .HasForeignKey(e => e.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Permission)
+                .WithMany(p => p.RolePermissions)
+                .HasForeignKey(e => e.PermissionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Configure AuditLog entity
         modelBuilder.Entity<AuditLog>(entity =>
         {
@@ -99,14 +135,59 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired();
             entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CompareAtPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Cost).HasColumnType("decimal(18,2)");
             entity.Property(e => e.Weight).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PackageLength).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PackageWidth).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PackageHeight).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
             entity.HasIndex(e => e.SKU).IsUnique();
+            entity.HasIndex(e => e.Barcode).IsUnique().HasFilter("[Barcode] IS NOT NULL");
             
+            // Legacy one-to-many relationship (primary category)
             entity.HasOne(e => e.Category)
                 .WithMany(c => c.Products)
                 .HasForeignKey(e => e.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
+            
+            // Many-to-many relationship with categories
+            entity.HasMany(e => e.ProductCategories)
+                .WithOne(pc => pc.Product)
+                .HasForeignKey(pc => pc.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        
+        // Configure ProductCategory join table
+        modelBuilder.Entity<ProductCategory>(entity =>
+        {
+            entity.HasKey(e => new { e.ProductId, e.CategoryId });
+            entity.HasIndex(e => new { e.ProductId, e.CategoryId }).IsUnique();
+            
+            entity.HasOne(e => e.Product)
+                .WithMany(p => p.ProductCategories)
+                .HasForeignKey(e => e.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Category)
+                .WithMany(c => c.ProductCategories)
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure ProductVariant entity
+        modelBuilder.Entity<ProductVariant>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Color).IsRequired();
+            entity.Property(e => e.PriceOverride).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            
+            entity.HasOne(e => e.Product)
+                .WithMany(p => p.Variants)
+                .HasForeignKey(e => e.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure Warehouse entity
@@ -144,6 +225,29 @@ public class ApplicationDbContext : DbContext
                 
             // Ensure unique combination of Product and Warehouse
             entity.HasIndex(e => new { e.ProductId, e.WarehouseId }).IsUnique();
+        });
+
+        // Configure VariantInventory entity
+        modelBuilder.Entity<VariantInventory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Quantity).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MinimumStockLevel).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MaximumStockLevel).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            
+            entity.HasOne(e => e.ProductVariant)
+                .WithMany()
+                .HasForeignKey(e => e.ProductVariantId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Warehouse)
+                .WithMany()
+                .HasForeignKey(e => e.WarehouseId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Ensure unique combination of ProductVariant and Warehouse
+            entity.HasIndex(e => new { e.ProductVariantId, e.WarehouseId }).IsUnique();
         });
 
         // Configure PurchaseOrder entity
@@ -429,6 +533,105 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.PhoneNumber).IsUnique();
         });
 
+        // Configure PromoCode entity
+        modelBuilder.Entity<PromoCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DiscountType).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure PromoCodeUser entity (many-to-many)
+        modelBuilder.Entity<PromoCodeUser>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasOne(e => e.PromoCode)
+                .WithMany(pc => pc.PromoCodeUsers)
+                .HasForeignKey(e => e.PromoCodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Ensure unique combination
+            entity.HasIndex(e => new { e.PromoCodeId, e.UserId }).IsUnique();
+        });
+
+        // Configure PromoCodeProduct entity (many-to-many)
+        modelBuilder.Entity<PromoCodeProduct>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasOne(e => e.PromoCode)
+                .WithMany(pc => pc.PromoCodeProducts)
+                .HasForeignKey(e => e.PromoCodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Product)
+                .WithMany()
+                .HasForeignKey(e => e.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Ensure unique combination
+            entity.HasIndex(e => new { e.PromoCodeId, e.ProductId }).IsUnique();
+        });
+
+        // Configure PromoCodeUsage entity
+        modelBuilder.Entity<PromoCodeUsage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasOne(e => e.PromoCode)
+                .WithMany(pc => pc.PromoCodeUsages)
+                .HasForeignKey(e => e.PromoCodeId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            entity.HasOne(e => e.SalesOrder)
+                .WithMany()
+                .HasForeignKey(e => e.SalesOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure Wishlist entity
+        modelBuilder.Entity<Wishlist>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Product)
+                .WithMany()
+                .HasForeignKey(e => e.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.ProductVariant)
+                .WithMany()
+                .HasForeignKey(e => e.ProductVariantId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Ensure unique combination of User, Product, and Variant
+            entity.HasIndex(e => new { e.UserId, e.ProductId, e.ProductVariantId }).IsUnique();
+        });
+
         // Seed initial data
         SeedData(modelBuilder);
     }
@@ -446,13 +649,14 @@ public class ApplicationDbContext : DbContext
         );
 
         // Seed admin user (password: Admin123!)
+        // Note: The password hash will be updated by SeedUsers.cs to ensure correct password
         modelBuilder.Entity<User>().HasData(
             new User
             {
                 Id = 1,
                 FullName = "System Administrator",
                 Email = "admin@example.com",
-                PasswordHash = "$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi", // Password: password
+                PasswordHash = "$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi", // Initial hash, will be updated by SeedUsers
                 IsActive = true,
                 CreatedAt = new DateTime(2023, 1, 1, 10, 0, 0, DateTimeKind.Utc)
             }

@@ -116,7 +116,7 @@ public class AdminController : ControllerBase
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Assign roles if provided
+            // Assign roles if provided, otherwise assign default "Customer" role
             if (request.Roles != null && request.Roles.Any())
             {
                 var roles = await _context.Roles
@@ -134,6 +134,22 @@ public class AdminController : ControllerBase
                     _context.UserRoles.Add(userRole);
                 }
                 await _context.SaveChangesAsync();
+            }
+            else
+            {
+                // Assign default "Customer" role if no roles specified
+                var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
+                if (customerRole != null)
+                {
+                    var userRole = new UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = customerRole.Id,
+                        AssignedAt = DateTime.UtcNow
+                    };
+                    _context.UserRoles.Add(userRole);
+                    await _context.SaveChangesAsync();
+                }
             }
 
             // Load the user with roles for response

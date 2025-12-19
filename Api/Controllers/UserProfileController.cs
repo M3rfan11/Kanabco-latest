@@ -44,6 +44,8 @@ public class UserProfileController : ControllerBase
                     Id = u.Id,
                     FullName = u.FullName,
                     Email = u.Email,
+                    Phone = u.Phone,
+                    Address = u.Address,
                     IsActive = u.IsActive,
                     CreatedAt = u.CreatedAt,
                     UpdatedAt = u.UpdatedAt,
@@ -92,6 +94,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -112,6 +116,12 @@ public class UserProfileController : ControllerBase
                 user.Email = request.Email;
             }
             
+            if (request.Phone != null)
+                user.Phone = request.Phone;
+            
+            if (request.Address != null)
+                user.Address = request.Address;
+            
             if (!string.IsNullOrEmpty(request.Password))
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
@@ -124,6 +134,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -146,6 +158,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -186,6 +200,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -245,6 +261,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -263,6 +281,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -285,6 +305,8 @@ public class UserProfileController : ControllerBase
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
+                Phone = user.Phone,
+                Address = user.Address,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
@@ -296,6 +318,60 @@ public class UserProfileController : ControllerBase
         {
             _logger.LogError(ex, "Error deactivating user account");
             return StatusCode(500, new { message = "An error occurred while deactivating account" });
+        }
+    }
+
+    [HttpPost("change-password")]
+    public async Task<ActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            // Verify current password
+            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+            {
+                return BadRequest(new { message = "Current password is incorrect" });
+            }
+
+            // Validate new password
+            if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 6)
+            {
+                return BadRequest(new { message = "New password must be at least 6 characters long" });
+            }
+
+            // Update password
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Audit log
+            await _auditService.LogAsync(
+                "User",
+                user.Id.ToString(),
+                "ChangePassword",
+                $"Password changed for user {user.Email}",
+                null,
+                userId
+            );
+
+            return Ok(new { message = "Password changed successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing password");
+            return StatusCode(500, new { message = "An error occurred while changing password" });
         }
     }
 

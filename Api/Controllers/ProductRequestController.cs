@@ -334,24 +334,22 @@ public class ProductRequestController : ControllerBase
                     item.Notes = string.IsNullOrEmpty(item.Notes) ? itemApproval.Notes : $"{item.Notes}\nApproval: {itemApproval.Notes}";
                 }
 
-                // Automatically transfer inventory from store to POS
+                // Update inventory - items are now available in the warehouse
                 var inventory = await _context.ProductInventories
                     .FirstOrDefaultAsync(pi => pi.ProductId == item.ProductId && pi.WarehouseId == productRequest.WarehouseId);
 
                 if (inventory == null)
                 {
-                    return BadRequest($"Product {item.ProductId} not found in store inventory. Cannot transfer items that don't exist in store.");
+                    return BadRequest($"Product {item.ProductId} not found in store inventory.");
                 }
 
-                // Check if store has enough inventory to transfer
+                // Check if store has enough inventory
                 if (inventory.Quantity < approvedQuantity)
                 {
                     return BadRequest($"Insufficient store inventory for product {item.ProductId}. Available: {inventory.Quantity}, Requested: {approvedQuantity}");
                 }
 
-                // Transfer items from store inventory to POS inventory
-                inventory.Quantity -= approvedQuantity; // Remove from store
-                inventory.POSQuantity += approvedQuantity; // Add to POS
+                // Inventory remains in the warehouse (no POS transfer needed)
                 inventory.UpdatedAt = DateTime.UtcNow;
             }
         }
@@ -362,7 +360,7 @@ public class ProductRequestController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAsync("ProductRequest", productRequest.Id.ToString(), "Approved", $"Approved product request with {request.Items.Count} items and transferred inventory to POS", null, currentUserId);
+        await _auditService.LogAsync("ProductRequest", productRequest.Id.ToString(), "Approved", $"Approved product request with {request.Items.Count} items", null, currentUserId);
 
         return NoContent();
     }
@@ -458,9 +456,7 @@ public class ProductRequestController : ControllerBase
                         return BadRequest($"Insufficient store inventory for product {item.ProductId}. Available: {inventory.Quantity}, Requested: {receivedItem.QuantityReceived}");
                     }
 
-                    // Transfer items from store inventory to POS inventory
-                    inventory.Quantity -= receivedItem.QuantityReceived; // Remove from store
-                    inventory.POSQuantity += receivedItem.QuantityReceived; // Add to POS
+                    // Inventory is now available in the warehouse
                     inventory.UpdatedAt = DateTime.UtcNow;
                 }
             }

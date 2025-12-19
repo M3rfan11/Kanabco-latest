@@ -62,7 +62,7 @@ namespace Api.Controllers
 
         // GET: api/Stores
         [HttpGet]
-        [Authorize(Roles = "SuperAdmin,StoreManager")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<object>>> GetStores()
         {
             var userId = GetCurrentUserId();
@@ -154,7 +154,7 @@ namespace Api.Controllers
 
         // POST: api/Stores
         [HttpPost]
-        [Authorize(Roles = "SuperAdmin")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Warehouse>> CreateStore([FromBody] CreateStoreRequest request)
         {
             // Only SuperAdmin can create stores

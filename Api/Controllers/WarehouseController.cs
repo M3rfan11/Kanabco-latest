@@ -82,7 +82,7 @@ public class WarehouseController : ControllerBase
     /// Get all warehouses including inactive ones (Admin only)
     /// </summary>
     [HttpGet("all")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<WarehouseResponse>>> GetAllWarehouses()
     {
         var warehouses = await _context.Warehouses
@@ -150,7 +150,7 @@ public class WarehouseController : ControllerBase
     /// Create a new warehouse (Admin only)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<WarehouseResponse>> CreateWarehouse([FromBody] CreateWarehouseRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -229,7 +229,7 @@ public class WarehouseController : ControllerBase
     /// Update a warehouse (Admin only)
     /// </summary>
     [HttpPut("{id}")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<WarehouseResponse>> UpdateWarehouse(int id, [FromBody] UpdateWarehouseRequest request)
     {
         var warehouse = await _context.Warehouses.FindAsync(id);
@@ -319,7 +319,7 @@ public class WarehouseController : ControllerBase
     /// Soft delete a warehouse (Admin only)
     /// </summary>
     [HttpDelete("{id}")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteWarehouse(int id)
     {
         var warehouse = await _context.Warehouses.FindAsync(id);
@@ -394,7 +394,7 @@ public class WarehouseController : ControllerBase
     /// Assign a manager to a warehouse
     /// </summary>
     [HttpPost("{id}/assign-manager")]
-    [Authorize(Roles = "SuperAdmin,Admin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> AssignManager(int id, [FromBody] AssignManagerRequest request)
     {
         var warehouse = await _context.Warehouses
@@ -462,7 +462,7 @@ public class WarehouseController : ControllerBase
     /// Remove manager from a warehouse
     /// </summary>
     [HttpDelete("{id}/remove-manager")]
-    [Authorize(Roles = "SuperAdmin,Admin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> RemoveManager(int id)
     {
         var warehouse = await _context.Warehouses

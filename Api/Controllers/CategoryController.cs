@@ -5,6 +5,7 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Api.Services;
+using Api.Attributes;
 
 namespace Api.Controllers;
 
@@ -51,13 +52,15 @@ public class CategoryController : ControllerBase
     }
 
     /// <summary>
-    /// Get all categories including inactive ones (Admin only)
+    /// Get all categories including inactive ones (Requires Categories.Read permission)
     /// </summary>
     [HttpGet("all")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [RequirePermission("Categories", "Read")]
     public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetAllCategories()
     {
+        // Only return active categories by default
         var categories = await _context.Categories
+            .Where(c => c.IsActive)
             .Select(c => new CategoryResponse
             {
                 Id = c.Id,
@@ -103,10 +106,10 @@ public class CategoryController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new category (Admin only)
+    /// Create a new category (Requires Categories.Create permission)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [RequirePermission("Categories", "Create")]
     public async Task<ActionResult<CategoryResponse>> CreateCategory([FromBody] CreateCategoryRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -159,10 +162,10 @@ public class CategoryController : ControllerBase
     }
 
     /// <summary>
-    /// Update a category (Admin only)
+    /// Update a category (Requires Categories.Update permission)
     /// </summary>
     [HttpPut("{id}")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [RequirePermission("Categories", "Update")]
     public async Task<ActionResult<CategoryResponse>> UpdateCategory(int id, [FromBody] UpdateCategoryRequest request)
     {
         var category = await _context.Categories.FindAsync(id);
@@ -228,10 +231,10 @@ public class CategoryController : ControllerBase
     }
 
     /// <summary>
-    /// Soft delete a category (Admin only)
+    /// Soft delete a category (Requires Categories.Delete permission)
     /// </summary>
     [HttpDelete("{id}")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [RequirePermission("Categories", "Delete")]
     public async Task<IActionResult> DeleteCategory(int id)
     {
         var category = await _context.Categories.FindAsync(id);
@@ -270,10 +273,10 @@ public class CategoryController : ControllerBase
     }
 
     /// <summary>
-    /// Restore a soft-deleted category (Admin only)
+    /// Restore a soft-deleted category (Requires Categories.Update permission)
     /// </summary>
     [HttpPatch("{id}/restore")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [RequirePermission("Categories", "Update")]
     public async Task<ActionResult<CategoryResponse>> RestoreCategory(int id)
     {
         var category = await _context.Categories.FindAsync(id);

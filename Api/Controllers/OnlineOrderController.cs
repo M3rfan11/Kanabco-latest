@@ -76,7 +76,7 @@ public class OnlineOrderController : ControllerBase
     /// Get all online orders (OnlineManager only)
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<OnlineOrderResponse>>> GetOnlineOrders()
     {
         try
@@ -136,7 +136,7 @@ public class OnlineOrderController : ControllerBase
     /// Get online order by ID
     /// </summary>
     [HttpGet("{id}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OnlineOrderResponse>> GetOnlineOrder(int id)
     {
         try
@@ -199,7 +199,7 @@ public class OnlineOrderController : ControllerBase
     /// Create a new online order using the OnlineOrderManager
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OnlineOrderResponse>> CreateOnlineOrder([FromBody] CreateOnlineOrderRequest request)
     {
         try
@@ -225,7 +225,7 @@ public class OnlineOrderController : ControllerBase
     /// Update online order status using the OnlineOrderManager
     /// </summary>
     [HttpPut("{id}/status")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateOnlineOrderStatus(int id, [FromBody] UpdateOnlineOrderStatusRequest request)
     {
         try
@@ -256,7 +256,7 @@ public class OnlineOrderController : ControllerBase
     /// Get online inventory (products available for online orders)
     /// </summary>
     [HttpGet("inventory")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<OnlineInventoryResponse>>> GetOnlineInventory()
     {
         try
@@ -299,7 +299,7 @@ public class OnlineOrderController : ControllerBase
     /// Update online inventory (restock products)
     /// </summary>
     [HttpPut("inventory/{productId}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateOnlineInventory(int productId, [FromBody] UpdateOnlineInventoryRequest request)
     {
         try
@@ -345,7 +345,7 @@ public class OnlineOrderController : ControllerBase
     /// Accept an online order
     /// </summary>
     [HttpPost("{id}/accept")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AcceptOrder(int id, [FromBody] AcceptOrderRequest? request = null)
     {
         try
@@ -376,7 +376,7 @@ public class OnlineOrderController : ControllerBase
     /// Ship an online order
     /// </summary>
     [HttpPost("{id}/ship")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> ShipOrder(int id, [FromBody] ShipOrderRequest? request = null)
     {
         try
@@ -407,7 +407,7 @@ public class OnlineOrderController : ControllerBase
     /// Mark order as delivered
     /// </summary>
     [HttpPost("{id}/deliver")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeliverOrder(int id, [FromBody] DeliverOrderRequest? request = null)
     {
         try
@@ -437,7 +437,7 @@ public class OnlineOrderController : ControllerBase
     /// Cancel an online order
     /// </summary>
     [HttpPost("{id}/cancel")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CancelOrder(int id, [FromBody] CancelOrderRequest request)
     {
         try
@@ -467,7 +467,7 @@ public class OnlineOrderController : ControllerBase
     /// Get orders by status
     /// </summary>
     [HttpGet("status/{status}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<OnlineOrderResponse>>> GetOrdersByStatus(string status)
     {
         try
@@ -486,7 +486,7 @@ public class OnlineOrderController : ControllerBase
     /// Get orders requiring attention
     /// </summary>
     [HttpGet("attention")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<OnlineOrderResponse>>> GetOrdersRequiringAttention()
     {
         try
@@ -505,7 +505,7 @@ public class OnlineOrderController : ControllerBase
     /// Get order analytics
     /// </summary>
     [HttpGet("analytics")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OrderAnalyticsResult>> GetOrderAnalytics([FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
     {
         try
@@ -524,7 +524,7 @@ public class OnlineOrderController : ControllerBase
     /// Validate order before processing
     /// </summary>
     [HttpPost("validate")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OrderValidationResult>> ValidateOrder([FromBody] CreateOnlineOrderRequest request)
     {
         try
@@ -543,7 +543,7 @@ public class OnlineOrderController : ControllerBase
     /// Check inventory availability for order items
     /// </summary>
     [HttpPost("check-inventory")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<InventoryCheckResult>> CheckInventoryAvailability([FromBody] List<CreateOnlineOrderItemRequest> items)
     {
         try

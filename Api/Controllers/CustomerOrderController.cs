@@ -12,7 +12,6 @@ namespace Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize] // All endpoints require authentication
 public class CustomerOrderController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -152,13 +151,18 @@ public class CustomerOrderController : ControllerBase
                 return NotFound("Product not found or not available");
             }
 
+            // Get available quantity (always calculate for display, even if AlwaysAvailable)
             var availableQuantity = product.ProductInventories
                 .Where(pi => pi.WarehouseId == onlineWarehouse.Id)
                 .Sum(pi => pi.Quantity);
 
-            if (availableQuantity < request.Quantity)
+            // Skip inventory check if product is marked as AlwaysAvailable
+            if (!product.AlwaysAvailable)
             {
-                return BadRequest($"Insufficient stock. Available: {availableQuantity}");
+                if (availableQuantity < request.Quantity)
+                {
+                    return BadRequest($"Insufficient stock. Available: {availableQuantity}");
+                }
             }
 
             // Check if item already exists in cart
@@ -249,13 +253,25 @@ public class CustomerOrderController : ControllerBase
                 return NotFound("Online warehouse not found");
             }
 
+            // Get the product to check AlwaysAvailable flag
+            var product = await _context.Products.FindAsync(cartItem.ProductId);
+            if (product == null)
+            {
+                return NotFound("Product not found");
+            }
+
+            // Get available quantity (always calculate for display, even if AlwaysAvailable)
             var availableQuantity = await _context.ProductInventories
                 .Where(pi => pi.ProductId == cartItem.ProductId && pi.WarehouseId == onlineWarehouse.Id)
                 .SumAsync(pi => pi.Quantity);
 
-            if (availableQuantity < request.Quantity)
+            // Skip inventory check if product is marked as AlwaysAvailable
+            if (!product.AlwaysAvailable)
             {
-                return BadRequest($"Insufficient stock. Available: {availableQuantity}");
+                if (availableQuantity < request.Quantity)
+                {
+                    return BadRequest($"Insufficient stock. Available: {availableQuantity}");
+                }
             }
 
             cartItem.Quantity = request.Quantity;
@@ -358,9 +374,346 @@ public class CustomerOrderController : ControllerBase
     #region Customer Order Endpoints
 
     /// <summary>
-    /// Create order from cart or direct items
+    /// Create guest order (no authentication required)
+    /// </summary>
+    [HttpPost("guest-order")]
+    [AllowAnonymous]
+    public async Task<ActionResult<GuestOrderResponse>> CreateGuestOrder([FromBody] CreateGuestOrderRequest request)
+    {
+        try
+        {
+            var onlineWarehouse = await _context.Warehouses.FirstOrDefaultAsync(w => w.Name == "Online Store" || w.IsActive);
+            if (onlineWarehouse == null)
+            {
+                return NotFound("Online warehouse not found");
+            }
+
+            if (request.Items == null || !request.Items.Any())
+            {
+                return BadRequest("No items provided");
+            }
+
+            // Validate inventory availability (skip check for AlwaysAvailable products)
+            foreach (var item in request.Items)
+            {
+                // Get the product to check AlwaysAvailable flag
+                var product = await _context.Products.FindAsync(item.ProductId);
+                if (product == null)
+                {
+                    return BadRequest($"Product ID {item.ProductId} not found");
+                }
+
+                // Skip inventory check if product is marked as AlwaysAvailable
+                if (product.AlwaysAvailable)
+                {
+                    continue;
+                }
+
+                // Check variant inventory if variantId is provided
+                if (item.VariantId.HasValue)
+                {
+                    var variantInventory = await _context.VariantInventories
+                        .Where(vi => vi.ProductVariantId == item.VariantId.Value && vi.WarehouseId == onlineWarehouse.Id)
+                        .SumAsync(vi => vi.Quantity);
+
+                    if (variantInventory < item.Quantity)
+                    {
+                        return BadRequest($"Insufficient stock for variant ID {item.VariantId.Value}. Available: {variantInventory}");
+                    }
+                }
+                else
+                {
+                    // Check product inventory
+                    var availableQuantity = await _context.ProductInventories
+                        .Where(pi => pi.ProductId == item.ProductId && pi.WarehouseId == onlineWarehouse.Id)
+                        .SumAsync(pi => pi.Quantity);
+
+                    if (availableQuantity < item.Quantity)
+                    {
+                        return BadRequest($"Insufficient stock for product ID {item.ProductId}. Available: {availableQuantity}");
+                    }
+                }
+            }
+
+            // Calculate subtotal
+            var subtotal = request.Items.Sum(item => item.Quantity * item.UnitPrice);
+            var shippingCost = request.ShippingCost ?? 0;
+            var orderAmount = subtotal + shippingCost;
+            
+            // Check if user is authenticated (even though endpoint is AllowAnonymous)
+            int? authenticatedUserId = null;
+            try
+            {
+                var userIdClaim = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+                if (userIdClaim != null)
+                {
+                    authenticatedUserId = int.Parse(userIdClaim.Value);
+                }
+            }
+            catch
+            {
+                // User is not authenticated, continue as guest
+            }
+
+            // Apply promo code if provided
+            decimal discountAmount = 0;
+            PromoCode? appliedPromoCode = null;
+            int? promoCodeUserId = authenticatedUserId; // Use authenticated user ID if available
+            
+            if (!string.IsNullOrEmpty(request.PromoCode))
+            {
+                appliedPromoCode = await _context.PromoCodes
+                    .Include(pc => pc.PromoCodeUsers)
+                    .Include(pc => pc.PromoCodeProducts)
+                    .FirstOrDefaultAsync(pc => pc.Code.ToUpper() == request.PromoCode.ToUpper() && pc.IsActive);
+
+                if (appliedPromoCode != null)
+                {
+                    var now = DateTime.UtcNow;
+                    var orderProductIds = request.Items.Select(i => i.ProductId).ToList();
+                    
+                    // Check if expired
+                    if (appliedPromoCode.EndDate.HasValue && appliedPromoCode.EndDate.Value < now)
+                    {
+                        appliedPromoCode = null; // Code expired
+                    }
+                    // Check usage limit
+                    else if (appliedPromoCode.UsageLimit.HasValue && appliedPromoCode.UsedCount >= appliedPromoCode.UsageLimit.Value)
+                    {
+                        appliedPromoCode = null; // Usage limit reached
+                    }
+                    // Check minimum order amount
+                    else if (appliedPromoCode.MinimumOrderAmount.HasValue && orderAmount < appliedPromoCode.MinimumOrderAmount.Value)
+                    {
+                        appliedPromoCode = null; // Minimum order amount not met
+                    }
+                    // Check if assigned to specific users
+                    else if (appliedPromoCode.PromoCodeUsers.Any())
+                    {
+                        // If user-specific, must be authenticated
+                        if (authenticatedUserId == null)
+                        {
+                            appliedPromoCode = null; // Guest can't use user-specific codes
+                        }
+                        else if (!appliedPromoCode.PromoCodeUsers.Any(pcu => pcu.UserId == authenticatedUserId))
+                        {
+                            appliedPromoCode = null; // User not in allowed list
+                        }
+                        else
+                        {
+                            // Check per-user usage limit
+                            if (appliedPromoCode.UsageLimitPerUser.HasValue)
+                            {
+                                var userUsageCount = await _context.PromoCodeUsages
+                                    .CountAsync(pcu => pcu.PromoCodeId == appliedPromoCode.Id && pcu.UserId == authenticatedUserId);
+                                
+                                if (userUsageCount >= appliedPromoCode.UsageLimitPerUser.Value)
+                                {
+                                    appliedPromoCode = null; // User has reached their limit
+                                }
+                            }
+                        }
+                    }
+                    // Check if applicable to specific products
+                    else if (appliedPromoCode.PromoCodeProducts.Any())
+                    {
+                        if (!orderProductIds.Any(id => appliedPromoCode.PromoCodeProducts.Any(pcp => pcp.ProductId == id)))
+                        {
+                            appliedPromoCode = null; // No matching products
+                        }
+                    }
+
+                    // Calculate discount if promo code is valid
+                    if (appliedPromoCode != null)
+                    {
+                        if (appliedPromoCode.DiscountType == "Percentage")
+                        {
+                            discountAmount = orderAmount * (appliedPromoCode.DiscountValue / 100m);
+                        }
+                        else if (appliedPromoCode.DiscountType == "FixedAmount")
+                        {
+                            discountAmount = appliedPromoCode.DiscountValue;
+                        }
+
+                        // Apply maximum discount limit
+                        if (appliedPromoCode.MaximumDiscountAmount.HasValue && discountAmount > appliedPromoCode.MaximumDiscountAmount.Value)
+                        {
+                            discountAmount = appliedPromoCode.MaximumDiscountAmount.Value;
+                        }
+                    }
+                }
+            }
+            
+            // Create order
+            var orderNumber = GenerateGuestOrderNumber();
+            var totalAmount = orderAmount - discountAmount;
+
+            // For guest orders, we need to use a valid user ID due to foreign key constraint
+            // Use the first admin user as the system user for guest orders
+            var systemUser = await _context.Users
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin"));
+            
+            if (systemUser == null)
+            {
+                // Fallback to first user if no admin found
+                systemUser = await _context.Users.FirstOrDefaultAsync();
+                if (systemUser == null)
+                {
+                    return StatusCode(500, new { message = "System configuration error: No users found in database" });
+                }
+            }
+
+            var order = new SalesOrder
+            {
+                OrderNumber = orderNumber,
+                CustomerName = request.CustomerName,
+                CustomerEmail = request.CustomerEmail,
+                CustomerPhone = request.CustomerPhone,
+                CustomerAddress = request.CustomerAddress,
+                OrderDate = DateTime.UtcNow,
+                DeliveryDate = request.DeliveryDate,
+                TotalAmount = totalAmount,
+                Status = "Pending",
+                PaymentStatus = "Pending",
+                Notes = $"{request.Notes ?? ""} Payment Method: {request.PaymentMethod ?? "Cash on Delivery"}".Trim(),
+                CreatedByUserId = systemUser.Id, // Use system/admin user for guest orders
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.SalesOrders.Add(order);
+            await _context.SaveChangesAsync();
+
+            // Create order items
+            var salesItems = request.Items.Select(item => new SalesItem
+            {
+                SalesOrderId = order.Id,
+                ProductId = item.ProductId,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                TotalPrice = item.Quantity * item.UnitPrice,
+                Unit = item.Unit ?? "piece",
+                WarehouseId = onlineWarehouse.Id,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
+
+            _context.SalesItems.AddRange(salesItems);
+
+            // Create initial tracking entry
+            var tracking = new OrderTracking
+            {
+                OrderId = order.Id,
+                Status = "Pending",
+                Notes = "Order created",
+                Timestamp = DateTime.UtcNow,
+                UpdatedByUserId = systemUser.Id // Use system user for guest orders
+            };
+            _context.OrderTrackings.Add(tracking);
+
+            // Track promo code usage if applied
+            // Record promo code usage
+            if (appliedPromoCode != null && discountAmount > 0)
+            {
+                appliedPromoCode.UsedCount++;
+                
+                var promoCodeUsage = new PromoCodeUsage
+                {
+                    PromoCodeId = appliedPromoCode.Id,
+                    SalesOrderId = order.Id,
+                    UserId = promoCodeUserId, // null for guest orders
+                    DiscountAmount = discountAmount,
+                    UsedAt = DateTime.UtcNow
+                };
+                
+                _context.PromoCodeUsages.Add(promoCodeUsage);
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Return guest order response
+            return Ok(new GuestOrderResponse
+            {
+                OrderId = order.Id,
+                OrderNumber = orderNumber,
+                CustomerEmail = order.CustomerEmail,
+                TotalAmount = totalAmount,
+                Status = order.Status,
+                Message = "Order placed successfully. You can track your order by logging in with your email."
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating guest order");
+            return StatusCode(500, new { message = "An error occurred while creating the order" });
+        }
+    }
+
+    private string GenerateGuestOrderNumber()
+    {
+        var today = DateTime.UtcNow;
+        var prefix = $"GUEST{today:yyyyMMdd}";
+        var count = _context.SalesOrders.Count(so => so.OrderNumber.StartsWith(prefix)) + 1;
+        return $"{prefix}{count:D4}";
+    }
+
+    /// <summary>
+    /// Track order by order number and email (for guest orders)
+    /// </summary>
+    [HttpPost("track-order")]
+    [AllowAnonymous]
+    public async Task<ActionResult<CustomerOrderResponse>> TrackOrder([FromBody] TrackOrderRequest request)
+    {
+        try
+        {
+            // Normalize order number (remove # if present, trim whitespace, uppercase)
+            var normalizedOrderNumber = request.OrderNumber.Trim().ToUpper().Replace("#", "");
+            
+            // Normalize email (trim and lowercase)
+            var normalizedEmail = request.Email.Trim().ToLower();
+            
+            // Get all orders first, then filter in memory for case-insensitive matching
+            var orders = await _context.SalesOrders
+                .Include(so => so.SalesItems)
+                .ThenInclude(si => si.Product)
+                .Where(so => so.CustomerEmail != null)
+                .ToListAsync();
+            
+            var order = orders.FirstOrDefault(so => 
+                so.OrderNumber.Trim().ToUpper().Replace("#", "") == normalizedOrderNumber && 
+                so.CustomerEmail!.Trim().ToLower() == normalizedEmail);
+
+            if (order == null)
+            {
+                // Log available orders for debugging (first 5 matching the order number pattern)
+                var matchingOrders = orders
+                    .Where(so => so.OrderNumber.Trim().ToUpper().Replace("#", "").StartsWith(normalizedOrderNumber.Substring(0, Math.Min(8, normalizedOrderNumber.Length))))
+                    .Take(5)
+                    .Select(so => new { so.OrderNumber, so.CustomerEmail })
+                    .ToList();
+                
+                _logger.LogWarning("Order not found for OrderNumber: {OrderNumber}, Email: {Email}. Found {Count} similar orders: {Orders}", 
+                    normalizedOrderNumber, normalizedEmail, matchingOrders.Count, 
+                    string.Join(", ", matchingOrders.Select(o => $"{o.OrderNumber}/{o.CustomerEmail}")));
+                
+                return NotFound("Order not found. Please check your order number and email.");
+            }
+
+            var response = await GetOrderResponse(order.Id);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error tracking order");
+            return StatusCode(500, new { message = "An error occurred while tracking the order" });
+        }
+    }
+
+    /// <summary>
+    /// Create order from cart or direct items (requires authentication)
     /// </summary>
     [HttpPost("order")]
+    [Authorize]
     public async Task<ActionResult<CustomerOrderResponse>> CreateOrder([FromBody] CreateCustomerOrderRequest request)
     {
         try
@@ -409,9 +762,22 @@ public class CustomerOrderController : ControllerBase
                 orderItems = request.Items;
             }
 
-            // Validate inventory availability
+            // Validate inventory availability (skip check for AlwaysAvailable products)
             foreach (var item in orderItems)
             {
+                // Get the product to check AlwaysAvailable flag
+                var product = await _context.Products.FindAsync(item.ProductId);
+                if (product == null)
+                {
+                    return BadRequest($"Product ID {item.ProductId} not found");
+                }
+
+                // Skip inventory check if product is marked as AlwaysAvailable
+                if (product.AlwaysAvailable)
+                {
+                    continue;
+                }
+
                 var availableQuantity = await _context.ProductInventories
                     .Where(pi => pi.ProductId == item.ProductId && pi.WarehouseId == onlineWarehouse.Id)
                     .SumAsync(pi => pi.Quantity);
@@ -422,9 +788,96 @@ public class CustomerOrderController : ControllerBase
                 }
             }
 
+            // Calculate subtotal and apply promo code if provided
+            var subtotal = orderItems.Sum(item => item.Quantity * item.UnitPrice);
+            var shippingCost = 0m; // Can be added to request if needed
+            var orderAmount = subtotal + shippingCost;
+            
+            decimal discountAmount = 0;
+            PromoCode? appliedPromoCode = null;
+            
+            if (!string.IsNullOrEmpty(request.PromoCode))
+            {
+                appliedPromoCode = await _context.PromoCodes
+                    .Include(pc => pc.PromoCodeUsers)
+                    .Include(pc => pc.PromoCodeProducts)
+                    .FirstOrDefaultAsync(pc => pc.Code.ToUpper() == request.PromoCode.ToUpper() && pc.IsActive);
+
+                if (appliedPromoCode != null)
+                {
+                    var now = DateTime.UtcNow;
+                    var orderProductIds = orderItems.Select(i => i.ProductId).ToList();
+                    
+                    // Check if expired
+                    if (appliedPromoCode.EndDate.HasValue && appliedPromoCode.EndDate.Value < now)
+                    {
+                        appliedPromoCode = null; // Code expired
+                    }
+                    // Check usage limit
+                    else if (appliedPromoCode.UsageLimit.HasValue && appliedPromoCode.UsedCount >= appliedPromoCode.UsageLimit.Value)
+                    {
+                        appliedPromoCode = null; // Usage limit reached
+                    }
+                    // Check minimum order amount
+                    else if (appliedPromoCode.MinimumOrderAmount.HasValue && orderAmount < appliedPromoCode.MinimumOrderAmount.Value)
+                    {
+                        appliedPromoCode = null; // Minimum order amount not met
+                    }
+                    // Check if assigned to specific users
+                    else if (appliedPromoCode.PromoCodeUsers.Any())
+                    {
+                        if (!appliedPromoCode.PromoCodeUsers.Any(pcu => pcu.UserId == userId))
+                        {
+                            appliedPromoCode = null; // User not in allowed list
+                        }
+                        else
+                        {
+                            // Check per-user usage limit
+                            if (appliedPromoCode.UsageLimitPerUser.HasValue)
+                            {
+                                var userUsageCount = await _context.PromoCodeUsages
+                                    .CountAsync(pcu => pcu.PromoCodeId == appliedPromoCode.Id && pcu.UserId == userId);
+                                
+                                if (userUsageCount >= appliedPromoCode.UsageLimitPerUser.Value)
+                                {
+                                    appliedPromoCode = null; // User has reached their limit
+                                }
+                            }
+                        }
+                    }
+                    // Check if applicable to specific products
+                    else if (appliedPromoCode.PromoCodeProducts.Any())
+                    {
+                        if (!orderProductIds.Any(id => appliedPromoCode.PromoCodeProducts.Any(pcp => pcp.ProductId == id)))
+                        {
+                            appliedPromoCode = null; // No matching products
+                        }
+                    }
+
+                    // Calculate discount if promo code is valid
+                    if (appliedPromoCode != null)
+                    {
+                        if (appliedPromoCode.DiscountType == "Percentage")
+                        {
+                            discountAmount = orderAmount * (appliedPromoCode.DiscountValue / 100m);
+                        }
+                        else if (appliedPromoCode.DiscountType == "FixedAmount")
+                        {
+                            discountAmount = appliedPromoCode.DiscountValue;
+                        }
+
+                        // Apply maximum discount limit
+                        if (appliedPromoCode.MaximumDiscountAmount.HasValue && discountAmount > appliedPromoCode.MaximumDiscountAmount.Value)
+                        {
+                            discountAmount = appliedPromoCode.MaximumDiscountAmount.Value;
+                        }
+                    }
+                }
+            }
+
             // Create order
             var orderNumber = GenerateOrderNumber();
-            var totalAmount = orderItems.Sum(item => item.Quantity * item.UnitPrice);
+            var totalAmount = orderAmount - discountAmount;
 
             var order = new SalesOrder
             {
@@ -472,6 +925,22 @@ public class CustomerOrderController : ControllerBase
             };
             _context.OrderTrackings.Add(tracking);
 
+            // Track promo code usage if applied
+            if (appliedPromoCode != null && discountAmount > 0)
+            {
+                appliedPromoCode.UsedCount++;
+                
+                var promoCodeUsage = new PromoCodeUsage
+                {
+                    PromoCodeId = appliedPromoCode.Id,
+                    SalesOrderId = order.Id,
+                    UserId = userId,
+                    DiscountAmount = discountAmount,
+                    UsedAt = DateTime.UtcNow
+                };
+                _context.PromoCodeUsages.Add(promoCodeUsage);
+            }
+
             // Clear cart if order was created from cart
             if (request.UseCartItems)
             {
@@ -499,7 +968,7 @@ public class CustomerOrderController : ControllerBase
     }
 
     /// <summary>
-    /// Get customer's orders
+    /// Get customer's orders (both authenticated orders and guest orders by email)
     /// </summary>
     [HttpGet("orders")]
     public async Task<ActionResult<IEnumerable<CustomerOrderResponse>>> GetCustomerOrders()
@@ -512,10 +981,25 @@ public class CustomerOrderController : ControllerBase
             }
 
             var userId = GetCurrentUserId();
+            
+            // Get current user's email to match guest orders
+            var currentUser = await _context.Users.FindAsync(userId);
+            if (currentUser == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+
+            // Get orders where:
+            // 1. CreatedByUserId matches the logged-in user (authenticated orders)
+            // 2. OR CustomerEmail matches the user's email (guest orders placed with same email)
             var orders = await _context.SalesOrders
                 .Include(so => so.SalesItems)
                 .ThenInclude(si => si.Product)
-                .Where(so => so.CreatedByUserId == userId)
+                .Where(so => 
+                    so.CreatedByUserId == userId || 
+                    (!string.IsNullOrEmpty(currentUser.Email) && 
+                     !string.IsNullOrEmpty(so.CustomerEmail) && 
+                     so.CustomerEmail.ToLower() == currentUser.Email.ToLower()))
                 .OrderByDescending(so => so.OrderDate)
                 .ToListAsync();
 
@@ -536,7 +1020,7 @@ public class CustomerOrderController : ControllerBase
     }
 
     /// <summary>
-    /// Get specific order by ID
+    /// Get specific order by ID (authenticated orders or guest orders by email)
     /// </summary>
     [HttpGet("order/{id}")]
     public async Task<ActionResult<CustomerOrderResponse>> GetOrder(int id)
@@ -549,8 +1033,21 @@ public class CustomerOrderController : ControllerBase
             }
 
             var userId = GetCurrentUserId();
+            
+            // Get current user's email to match guest orders
+            var currentUser = await _context.Users.FindAsync(userId);
+            if (currentUser == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+
             var order = await _context.SalesOrders
-                .FirstOrDefaultAsync(so => so.Id == id && so.CreatedByUserId == userId);
+                .FirstOrDefaultAsync(so => 
+                    so.Id == id && 
+                    (so.CreatedByUserId == userId || 
+                     (!string.IsNullOrEmpty(currentUser.Email) && 
+                      !string.IsNullOrEmpty(so.CustomerEmail) && 
+                      so.CustomerEmail.ToLower() == currentUser.Email.ToLower())));
 
             if (order == null)
             {

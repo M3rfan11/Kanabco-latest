@@ -69,6 +69,8 @@ namespace Api.DTOs
         [MaxLength(500)]
         public string? Notes { get; set; }
 
+        public string? PromoCode { get; set; } // Optional promo code
+
         public bool UseCartItems { get; set; } = true; // If true, use cart items; if false, use provided items
         public List<CreateOnlineOrderItemRequest>? Items { get; set; } // Only used if UseCartItems is false
     }
@@ -123,5 +125,79 @@ namespace Api.DTOs
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public int ProductCount { get; set; }
+    }
+
+    // Guest Order DTOs
+    public class CreateGuestOrderRequest
+    {
+        [Required]
+        [MaxLength(100)]
+        public string CustomerName { get; set; } = string.Empty;
+
+        [Required]
+        [EmailAddress]
+        [MaxLength(255)]
+        public string CustomerEmail { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(20)]
+        public string CustomerPhone { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(500)]
+        public string CustomerAddress { get; set; } = string.Empty;
+
+        public DateTime? DeliveryDate { get; set; }
+
+        [MaxLength(500)]
+        public string? Notes { get; set; }
+
+        [Required]
+        public List<CreateGuestOrderItemRequest> Items { get; set; } = new List<CreateGuestOrderItemRequest>();
+
+        public decimal? ShippingCost { get; set; }
+
+        public string? PaymentMethod { get; set; }
+
+        [MaxLength(50)]
+        public string? PromoCode { get; set; } // Optional promo code
+    }
+
+    public class CreateGuestOrderItemRequest
+    {
+        [Required]
+        public int ProductId { get; set; }
+
+        public int? VariantId { get; set; }
+
+        [Required]
+        [Range(0.01, double.MaxValue)]
+        public decimal Quantity { get; set; }
+
+        [Required]
+        [Range(0.01, double.MaxValue)]
+        public decimal UnitPrice { get; set; }
+
+        public string? Unit { get; set; }
+    }
+
+    public class GuestOrderResponse
+    {
+        public int OrderId { get; set; }
+        public string OrderNumber { get; set; } = string.Empty;
+        public string CustomerEmail { get; set; } = string.Empty;
+        public decimal TotalAmount { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class TrackOrderRequest
+    {
+        [Required]
+        public string OrderNumber { get; set; } = string.Empty;
+
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
     }
 }

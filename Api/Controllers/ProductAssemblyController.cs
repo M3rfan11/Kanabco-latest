@@ -32,7 +32,7 @@ public class ProductAssemblyController : ControllerBase
     /// Get all product assemblies
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<ProductAssemblyListResponse>>> GetProductAssemblies()
     {
         var currentUserId = GetCurrentUserId();
@@ -100,7 +100,7 @@ public class ProductAssemblyController : ControllerBase
     /// Get store inventory for assembly creation (simplified for store managers)
     /// </summary>
     [HttpGet("my-store-inventory")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<object>>> GetStoreInventoryForAssembly()
     {
         try
@@ -143,7 +143,7 @@ public class ProductAssemblyController : ControllerBase
     /// Get a specific product assembly by ID
     /// </summary>
     [HttpGet("{id}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ProductAssemblyResponse>> GetProductAssembly(int id)
     {
         var assembly = await _context.ProductAssemblies
@@ -219,10 +219,10 @@ public class ProductAssemblyController : ControllerBase
     }
 
     /// <summary>
-    /// Get active assemblies for POS offers (for cashiers)
+    /// Get active assemblies for offers (Admin only)
     /// </summary>
     [HttpGet("pos-offers")]
-    [Authorize(Roles = "SuperAdmin,StoreManager,Cashier")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<POSOfferResponse>>> GetPOSOffers()
     {
         var currentUserId = GetCurrentUserId();
@@ -305,10 +305,10 @@ public class ProductAssemblyController : ControllerBase
     }
 
     /// <summary>
-    /// Process a POS assembly sale (for cashiers)
+    /// Process an assembly sale (Admin only)
     /// </summary>
     [HttpPost("pos-sale")]
-    [Authorize(Roles = "SuperAdmin,StoreManager,Cashier")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<POSAssemblySaleResponse>> ProcessPOSAssemblySale(POSAssemblySaleRequest request)
     {
         var currentUserId = GetCurrentUserId();
@@ -384,7 +384,7 @@ public class ProductAssemblyController : ControllerBase
                 inventory.UpdatedAt = DateTime.UtcNow;
                 _context.ProductInventories.Update(inventory);
                 await _auditService.LogAsync("ProductInventory", inventory.Id.ToString(), "Updated", 
-                    $"Quantity reduced by {totalRequiredQuantity} for POS assembly sale {assembly.Id} (Required: {bom.RequiredQuantity} x Assembly Qty: {assembly.Quantity})", 
+                    $"Quantity reduced by {totalRequiredQuantity} for assembly sale {assembly.Id} (Required: {bom.RequiredQuantity} x Assembly Qty: {assembly.Quantity})", 
                     System.Text.Json.JsonSerializer.Serialize(inventory), currentUserId);
             }
         }
@@ -460,7 +460,7 @@ public class ProductAssemblyController : ControllerBase
     /// Create a new product assembly (simplified for store managers)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ProductAssemblyResponse>> CreateProductAssembly(CreateProductAssemblyRequest request)
     {
         if (request.BillOfMaterials == null || !request.BillOfMaterials.Any())
@@ -574,7 +574,7 @@ public class ProductAssemblyController : ControllerBase
     /// Create a simple assembly offer (simplified for store managers)
     /// </summary>
     [HttpPost("create-offer")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ProductAssemblyResponse>> CreateAssemblyOffer(CreateAssemblyOfferRequest request)
     {
         if (request.Items == null || !request.Items.Any())
@@ -700,7 +700,7 @@ public class ProductAssemblyController : ControllerBase
     /// Suggest multiple assembly offers based on inventory levels
     /// </summary>
     [HttpPost("suggest-offers")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<List<SuggestedOfferResponse>>> SuggestMultipleOffers(SuggestOffersRequest request)
     {
         var currentUserId = GetCurrentUserId();
@@ -872,7 +872,7 @@ public class ProductAssemblyController : ControllerBase
     /// Update a product assembly
     /// </summary>
     [HttpPut("{id}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductAssembly(int id, UpdateProductAssemblyRequest request)
     {
         var assembly = await _context.ProductAssemblies.FindAsync(id);
@@ -964,7 +964,7 @@ public class ProductAssemblyController : ControllerBase
     /// Start product assembly
     /// </summary>
     [HttpPost("{id}/start")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> StartAssembly(int id, StartAssemblyRequest request)
     {
         var assembly = await _context.ProductAssemblies
@@ -1035,7 +1035,7 @@ public class ProductAssemblyController : ControllerBase
     /// Complete product assembly and update inventory
     /// </summary>
     [HttpPost("{id}/complete")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CompleteAssembly(int id, CompleteAssemblyRequest request)
     {
         var assembly = await _context.ProductAssemblies

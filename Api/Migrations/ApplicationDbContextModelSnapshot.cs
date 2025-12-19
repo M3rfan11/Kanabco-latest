@@ -274,11 +274,54 @@ namespace Api.Migrations
                     b.ToTable("OrderTrackings");
                 });
 
+            modelBuilder.Entity("Api.Models.Permission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Permissions");
+                });
+
             modelBuilder.Entity("Api.Models.Product", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AlwaysAvailable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Brand")
                         .HasMaxLength(100)
@@ -287,13 +330,23 @@ namespace Api.Migrations
                     b.Property<int>("CategoryId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("CompareAtPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("Cost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CountryOfOrigin")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
                         .HasDefaultValueSql("datetime('now')");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
+                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Dimensions")
@@ -304,20 +357,60 @@ namespace Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("InventoryTracked")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsPhysicalProduct")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaUrls")
+                        .HasMaxLength(50000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("PackageHeight")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("PackageLength")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("PackageWidth")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ProductType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublishingChannels")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SKU")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("SellWhenOutOfStock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Taxable")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -326,10 +419,22 @@ namespace Api.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VariantAttributes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Vendor")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal?>("Weight")
                         .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique()
+                        .HasFilter("[Barcode] IS NOT NULL");
 
                     b.HasIndex("CategoryId");
 
@@ -412,6 +517,24 @@ namespace Api.Migrations
                     b.HasIndex("StoreId");
 
                     b.ToTable("ProductAssemblies");
+                });
+
+            modelBuilder.Entity("Api.Models.ProductCategory", b =>
+                {
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ProductId", "CategoryId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("ProductId", "CategoryId")
+                        .IsUnique();
+
+                    b.ToTable("ProductCategories");
                 });
 
             modelBuilder.Entity("Api.Models.ProductInventory", b =>
@@ -695,6 +818,217 @@ namespace Api.Migrations
                     b.ToTable("ProductRequestItems");
                 });
 
+            modelBuilder.Entity("Api.Models.ProductVariant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Attributes")
+                        .HasMaxLength(5000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaUrls")
+                        .HasMaxLength(50000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("PriceOverride")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SKU")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("ProductVariants");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiscountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("MaximumDiscountAmount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("MinimumOrderAmount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("UsageLimitPerUser")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.ToTable("PromoCodes");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeProduct", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PromoCodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("PromoCodeId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("PromoCodeProducts");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeUsage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PromoCodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SalesOrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PromoCodeId");
+
+                    b.HasIndex("SalesOrderId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PromoCodeUsages");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeUser", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsNotified")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("NotifiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PromoCodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PromoCodeId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("PromoCodeUsers");
+                });
+
             modelBuilder.Entity("Api.Models.PurchaseItem", b =>
                 {
                     b.Property<int>("Id")
@@ -851,45 +1185,63 @@ namespace Api.Migrations
                         new
                         {
                             Id = 1,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(3330),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(3170),
                             Description = "System Administrator - Full access to everything",
                             Name = "Admin"
                         },
                         new
                         {
                             Id = 2,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(4710),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(4920),
                             Description = "Regular User - Can manage own account and make requests",
                             Name = "User"
                         },
                         new
                         {
                             Id = 3,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(4710),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(5010),
                             Description = "Store Manager - Manages assigned store, products, and inventory",
                             Name = "StoreManager"
                         },
                         new
                         {
                             Id = 4,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(4710),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(5010),
                             Description = "Warehouse Manager - Manages warehouse operations and stock",
                             Name = "WarehouseManager"
                         },
                         new
                         {
                             Id = 5,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(4710),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(5010),
                             Description = "Sales Staff - Handles sales and customer orders",
                             Name = "SalesStaff"
                         },
                         new
                         {
                             Id = 6,
-                            CreatedAt = new DateTime(2025, 10, 15, 10, 14, 43, 730, DateTimeKind.Utc).AddTicks(4710),
+                            CreatedAt = new DateTime(2025, 12, 14, 12, 32, 20, 880, DateTimeKind.Utc).AddTicks(5010),
                             Description = "Purchase Staff - Handles purchase orders and supplier management",
                             Name = "PurchaseStaff"
                         });
+                });
+
+            modelBuilder.Entity("Api.Models.RolePermission", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PermissionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("RoleId", "PermissionId");
+
+                    b.HasIndex("PermissionId");
+
+                    b.ToTable("RolePermissions");
                 });
 
             modelBuilder.Entity("Api.Models.SalesItem", b =>
@@ -980,6 +1332,9 @@ namespace Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("DeliveryDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("DownPayment")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Notes")
@@ -1074,6 +1429,10 @@ namespace Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("AssignedStoreId")
                         .HasColumnType("INTEGER");
 
@@ -1095,6 +1454,10 @@ namespace Api.Migrations
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("UpdatedAt")
@@ -1147,6 +1510,52 @@ namespace Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Api.Models.VariantInventory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<decimal?>("MaximumStockLevel")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("MinimumStockLevel")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("POSQuantity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProductVariantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("ProductVariantId", "WarehouseId")
+                        .IsUnique();
+
+                    b.ToTable("VariantInventories");
+                });
+
             modelBuilder.Entity("Api.Models.Warehouse", b =>
                 {
                     b.Property<int>("Id")
@@ -1193,6 +1602,41 @@ namespace Api.Migrations
                     b.HasIndex("ManagerUserId");
 
                     b.ToTable("Warehouses");
+                });
+
+            modelBuilder.Entity("Api.Models.Wishlist", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProductVariantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ProductVariantId");
+
+                    b.HasIndex("UserId", "ProductId", "ProductVariantId")
+                        .IsUnique();
+
+                    b.ToTable("Wishlists");
                 });
 
             modelBuilder.Entity("Api.Models.AuditLog", b =>
@@ -1284,6 +1728,25 @@ namespace Api.Migrations
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("Api.Models.ProductCategory", b =>
+                {
+                    b.HasOne("Api.Models.Category", "Category")
+                        .WithMany("ProductCategories")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.Product", "Product")
+                        .WithMany("ProductCategories")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Api.Models.ProductInventory", b =>
@@ -1395,6 +1858,91 @@ namespace Api.Migrations
                     b.Navigation("ProductRequest");
                 });
 
+            modelBuilder.Entity("Api.Models.ProductVariant", b =>
+                {
+                    b.HasOne("Api.Models.Product", "Product")
+                        .WithMany("Variants")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCode", b =>
+                {
+                    b.HasOne("Api.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeProduct", b =>
+                {
+                    b.HasOne("Api.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.PromoCode", "PromoCode")
+                        .WithMany("PromoCodeProducts")
+                        .HasForeignKey("PromoCodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("PromoCode");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeUsage", b =>
+                {
+                    b.HasOne("Api.Models.PromoCode", "PromoCode")
+                        .WithMany("PromoCodeUsages")
+                        .HasForeignKey("PromoCodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.SalesOrder", "SalesOrder")
+                        .WithMany()
+                        .HasForeignKey("SalesOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("PromoCode");
+
+                    b.Navigation("SalesOrder");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Api.Models.PromoCodeUser", b =>
+                {
+                    b.HasOne("Api.Models.PromoCode", "PromoCode")
+                        .WithMany("PromoCodeUsers")
+                        .HasForeignKey("PromoCodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PromoCode");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Api.Models.PurchaseItem", b =>
                 {
                     b.HasOne("Api.Models.Product", "Product")
@@ -1438,6 +1986,25 @@ namespace Api.Migrations
                     b.Navigation("ApprovedByUser");
 
                     b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("Api.Models.RolePermission", b =>
+                {
+                    b.HasOne("Api.Models.Permission", "Permission")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.Role", "Role")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("Api.Models.SalesItem", b =>
@@ -1536,6 +2103,25 @@ namespace Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Api.Models.VariantInventory", b =>
+                {
+                    b.HasOne("Api.Models.ProductVariant", "ProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProductVariant");
+
+                    b.Navigation("Warehouse");
+                });
+
             modelBuilder.Entity("Api.Models.Warehouse", b =>
                 {
                     b.HasOne("Api.Models.User", "ManagerUser")
@@ -1546,8 +2132,36 @@ namespace Api.Migrations
                     b.Navigation("ManagerUser");
                 });
 
+            modelBuilder.Entity("Api.Models.Wishlist", b =>
+                {
+                    b.HasOne("Api.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Api.Models.ProductVariant", "ProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ProductVariant");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Api.Models.Category", b =>
                 {
+                    b.Navigation("ProductCategories");
+
                     b.Navigation("Products");
                 });
 
@@ -1556,9 +2170,18 @@ namespace Api.Migrations
                     b.Navigation("SalesOrders");
                 });
 
+            modelBuilder.Entity("Api.Models.Permission", b =>
+                {
+                    b.Navigation("RolePermissions");
+                });
+
             modelBuilder.Entity("Api.Models.Product", b =>
                 {
+                    b.Navigation("ProductCategories");
+
                     b.Navigation("ProductInventories");
+
+                    b.Navigation("Variants");
                 });
 
             modelBuilder.Entity("Api.Models.ProductAssembly", b =>
@@ -1571,6 +2194,15 @@ namespace Api.Migrations
                     b.Navigation("ProductRequestItems");
                 });
 
+            modelBuilder.Entity("Api.Models.PromoCode", b =>
+                {
+                    b.Navigation("PromoCodeProducts");
+
+                    b.Navigation("PromoCodeUsages");
+
+                    b.Navigation("PromoCodeUsers");
+                });
+
             modelBuilder.Entity("Api.Models.PurchaseOrder", b =>
                 {
                     b.Navigation("PurchaseItems");
@@ -1578,6 +2210,8 @@ namespace Api.Migrations
 
             modelBuilder.Entity("Api.Models.Role", b =>
                 {
+                    b.Navigation("RolePermissions");
+
                     b.Navigation("UserRoles");
                 });
 

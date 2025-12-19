@@ -48,6 +48,50 @@ public class RolesController : ControllerBase
         }
     }
 
+    [HttpGet("{id}/with-permissions")]
+    public async Task<ActionResult<RoleWithPermissionsResponse>> GetRoleWithPermissions(int id)
+    {
+        try
+        {
+            var role = await _context.Roles
+                .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
+                .Where(r => r.Id == id)
+                .FirstOrDefaultAsync();
+
+            if (role == null)
+            {
+                return NotFound(new { message = "Role not found" });
+            }
+
+            var response = new RoleWithPermissionsResponse
+            {
+                Id = role.Id,
+                Name = role.Name,
+                Description = role.Description,
+                CreatedAt = role.CreatedAt,
+                Permissions = role.RolePermissions
+                    .Select(rp => new PermissionResponse
+                    {
+                        Id = rp.Permission.Id,
+                        Name = rp.Permission.Name,
+                        Description = rp.Permission.Description,
+                        Resource = rp.Permission.Resource,
+                        Action = rp.Permission.Action,
+                        CreatedAt = rp.Permission.CreatedAt
+                    })
+                    .ToList()
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving role with permissions for ID: {RoleId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving the role with permissions" });
+        }
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<RoleResponse>> GetRole(int id)
     {
@@ -239,6 +283,98 @@ public class RolesController : ControllerBase
         {
             _logger.LogError(ex, "Error deleting role with ID: {RoleId}", id);
             return StatusCode(500, new { message = "An error occurred while deleting the role" });
+        }
+    }
+
+    [HttpPost("{id}/permissions")]
+    public async Task<ActionResult> AssignPermissionToRole(int id, [FromBody] AssignPermissionToRoleRequest request)
+    {
+        try
+        {
+            var role = await _context.Roles.FindAsync(id);
+            if (role == null)
+            {
+                return NotFound(new { message = "Role not found" });
+            }
+
+            var permission = await _context.Permissions.FindAsync(request.PermissionId);
+            if (permission == null)
+            {
+                return NotFound(new { message = "Permission not found" });
+            }
+
+            // Check if permission is already assigned to this role
+            var existingRolePermission = await _context.RolePermissions
+                .FirstOrDefaultAsync(rp => rp.RoleId == id && rp.PermissionId == request.PermissionId);
+
+            if (existingRolePermission != null)
+            {
+                return Conflict(new { message = "Permission is already assigned to this role" });
+            }
+
+            var rolePermission = new Api.Models.RolePermission
+            {
+                RoleId = id,
+                PermissionId = request.PermissionId,
+                AssignedAt = DateTime.UtcNow
+            };
+
+            _context.RolePermissions.Add(rolePermission);
+            await _context.SaveChangesAsync();
+
+            // Audit log
+            var currentUserId = GetCurrentUserId();
+            await _auditService.LogAsync(
+                "RolePermission",
+                $"{id}:{request.PermissionId}",
+                "Assign",
+                after: $"Role {role.Name} assigned permission {permission.Name}",
+                actorUserId: currentUserId
+            );
+
+            return Ok(new { message = "Permission assigned to role successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error assigning permission {PermissionId} to role {RoleId}", request.PermissionId, id);
+            return StatusCode(500, new { message = "An error occurred while assigning the permission to role" });
+        }
+    }
+
+    [HttpDelete("{id}/permissions/{permissionId}")]
+    public async Task<ActionResult> RemovePermissionFromRole(int id, int permissionId)
+    {
+        try
+        {
+            var rolePermission = await _context.RolePermissions
+                .Include(rp => rp.Role)
+                .Include(rp => rp.Permission)
+                .FirstOrDefaultAsync(rp => rp.RoleId == id && rp.PermissionId == permissionId);
+
+            if (rolePermission == null)
+            {
+                return NotFound(new { message = "Role permission not found" });
+            }
+
+            _context.RolePermissions.Remove(rolePermission);
+            await _context.SaveChangesAsync();
+
+            // Audit log
+            var currentUserId = GetCurrentUserId();
+            await _auditService.LogAsync(
+                "RolePermission",
+                $"{id}:{permissionId}",
+                "Remove",
+                before: $"Role {rolePermission.Role.Name} had permission {rolePermission.Permission.Name}",
+                actorUserId: currentUserId
+            );
+
+            return Ok(new { message = "Permission removed from role successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing permission {PermissionId} from role {RoleId}", permissionId, id);
+            return StatusCode(500, new { message = "An error occurred while removing the permission from role" });
         }
     }
 

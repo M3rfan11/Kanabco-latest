@@ -76,6 +76,66 @@ public class JwtService : IJwtService
         }
 
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+        
+        // Log roles for debugging
+        _logger.LogInformation("User {Email} logging in with roles: {Roles}", user.Email, string.Join(", ", roles));
+        
+        // Auto-assign SuperAdmin to admin@example.com if missing
+        if (user.Email == "admin@example.com" && !roles.Contains("SuperAdmin"))
+        {
+            _logger.LogWarning("admin@example.com doesn't have SuperAdmin role. Attempting to assign...");
+            var superAdminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "SuperAdmin");
+            if (superAdminRole != null)
+            {
+                var hasSuperAdmin = await _context.UserRoles
+                    .AnyAsync(ur => ur.UserId == user.Id && ur.RoleId == superAdminRole.Id);
+                
+                if (!hasSuperAdmin)
+                {
+                    var userRole = new Api.Models.UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = superAdminRole.Id,
+                        AssignedAt = DateTime.UtcNow
+                    };
+                    _context.UserRoles.Add(userRole);
+                    await _context.SaveChangesAsync();
+                    roles.Add("SuperAdmin");
+                    _logger.LogInformation("SuperAdmin role assigned to admin@example.com");
+                }
+            }
+        }
+        
+        // Auto-assign Customer role to any user without any roles
+        if (roles.Count == 0)
+        {
+            _logger.LogInformation("User {Email} has no roles. Assigning default Customer role...", user.Email);
+            var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
+            if (customerRole != null)
+            {
+                var hasCustomer = await _context.UserRoles
+                    .AnyAsync(ur => ur.UserId == user.Id && ur.RoleId == customerRole.Id);
+                
+                if (!hasCustomer)
+                {
+                    var userRole = new Api.Models.UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = customerRole.Id,
+                        AssignedAt = DateTime.UtcNow
+                    };
+                    _context.UserRoles.Add(userRole);
+                    await _context.SaveChangesAsync();
+                    roles.Add("Customer");
+                    _logger.LogInformation("Customer role assigned to user {Email}", user.Email);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Customer role not found in database. Please ensure roles are seeded.");
+            }
+        }
+        
         var accessToken = GenerateAccessToken(user, roles);
         var refreshToken = GenerateRefreshToken();
 
@@ -127,6 +187,33 @@ public class JwtService : IJwtService
         }
 
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+        
+        // Auto-assign Customer role to any user without any roles
+        if (roles.Count == 0)
+        {
+            _logger.LogInformation("User {Email} has no roles during token refresh. Assigning default Customer role...", user.Email);
+            var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
+            if (customerRole != null)
+            {
+                var hasCustomer = await _context.UserRoles
+                    .AnyAsync(ur => ur.UserId == user.Id && ur.RoleId == customerRole.Id);
+                
+                if (!hasCustomer)
+                {
+                    var userRole = new Api.Models.UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = customerRole.Id,
+                        AssignedAt = DateTime.UtcNow
+                    };
+                    _context.UserRoles.Add(userRole);
+                    await _context.SaveChangesAsync();
+                    roles.Add("Customer");
+                    _logger.LogInformation("Customer role assigned to user {Email} during token refresh", user.Email);
+                }
+            }
+        }
+        
         var accessToken = GenerateAccessToken(user, roles);
         var newRefreshToken = GenerateRefreshToken();
 

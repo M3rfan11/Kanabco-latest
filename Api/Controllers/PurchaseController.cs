@@ -42,7 +42,7 @@ public class PurchaseController : ControllerBase
     /// Get all purchase orders
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager,PurchaseStaff")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<PurchaseOrderListResponse>>> GetPurchaseOrders()
     {
         var orders = await _context.PurchaseOrders
@@ -130,7 +130,7 @@ public class PurchaseController : ControllerBase
     /// Create a new purchase order
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,StoreManager,PurchaseStaff")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PurchaseOrderResponse>> CreatePurchaseOrder(CreatePurchaseOrderRequest request)
     {
         if (request.Items == null || !request.Items.Any())

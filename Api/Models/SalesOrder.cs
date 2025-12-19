@@ -29,6 +29,8 @@ namespace Api.Models
         [Required]
         public decimal TotalAmount { get; set; }
         
+        public decimal? DownPayment { get; set; } // Down payment amount for furniture orders
+        
         [MaxLength(20)]
         public string Status { get; set; } = "Pending"; // Pending, Confirmed, Shipped, Delivered, Cancelled
         

@@ -5,6 +5,7 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Api.Services;
+using Api.Attributes;
 
 namespace Api.Controllers;
 
@@ -43,7 +44,7 @@ public class ProductInventoryController : ControllerBase
     /// Create new product inventory
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,StoreManager,WarehouseManager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ProductInventoryResponse>> CreateInventory([FromBody] CreateProductInventoryRequest request)
     {
         try
@@ -107,7 +108,7 @@ public class ProductInventoryController : ControllerBase
     /// Get all product inventories
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager,WarehouseManager,SalesStaff,PurchaseStaff,User")]
+    [Authorize]
     public async Task<ActionResult<IEnumerable<ProductInventoryResponse>>> GetInventories()
     {
         try
@@ -319,9 +320,11 @@ public class ProductInventoryController : ControllerBase
     }
 
     /// <summary>
-    /// Get low stock items
+    /// Get low stock items (product inventory only)
+    /// Requires Inventory.Read permission
     /// </summary>
     [HttpGet("low-stock")]
+    [RequirePermission("Inventory", "Read")]
     public async Task<ActionResult<IEnumerable<ProductInventoryResponse>>> GetLowStockItems()
     {
         try
@@ -356,10 +359,65 @@ public class ProductInventoryController : ControllerBase
     }
 
     /// <summary>
+    /// Initialize inventory for products that don't have inventory records
+    /// </summary>
+    [HttpPost("initialize-missing")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<ActionResult> InitializeMissingInventories()
+    {
+        try
+        {
+            var onlineWarehouse = await _context.Warehouses
+                .FirstOrDefaultAsync(w => w.Name == "Online Store" || w.Name.ToLower().Contains("online"));
+            
+            if (onlineWarehouse == null)
+            {
+                return BadRequest("Online Store warehouse not found. Please create it first.");
+            }
+
+            // Get all products that have inventory tracking enabled but no inventory records
+            var productsWithoutInventory = await _context.Products
+                .Where(p => p.InventoryTracked && 
+                    !_context.ProductInventories.Any(pi => pi.ProductId == p.Id && pi.WarehouseId == onlineWarehouse.Id))
+                .ToListAsync();
+
+            var createdCount = 0;
+            foreach (var product in productsWithoutInventory)
+            {
+                var defaultInventory = new ProductInventory
+                {
+                    ProductId = product.Id,
+                    WarehouseId = onlineWarehouse.Id,
+                    Quantity = 0, // Start with 0, user can update later
+                    MinimumStockLevel = 2, // Default minimum stock level
+                    MaximumStockLevel = 1000, // Default maximum stock level
+                    Unit = product.Unit ?? "piece",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.ProductInventories.Add(defaultInventory);
+                createdCount++;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { 
+                message = $"Initialized inventory for {createdCount} product(s) that were missing inventory records.",
+                createdCount = createdCount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing missing inventories");
+            return StatusCode(500, new { message = "An error occurred while initializing missing inventories", error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Set default minimum stock levels for products that don't have them
     /// </summary>
     [HttpPost("set-default-minimum-levels")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SetDefaultMinimumLevels([FromBody] SetDefaultMinimumLevelsRequest request)
     {
         try
@@ -394,7 +452,7 @@ public class ProductInventoryController : ControllerBase
     /// Fix missing inventory records for all products in all stores
     /// </summary>
     [HttpPost("fix-missing-inventories")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> FixMissingInventories()
     {
         try

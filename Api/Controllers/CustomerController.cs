@@ -30,7 +30,7 @@ namespace Api.Controllers
 
         // GET: api/Customer/lookup/{phoneNumber}
         [HttpGet("lookup/{phoneNumber}")]
-        [Authorize(Roles = "SuperAdmin,StoreManager,Cashier")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Customer>> LookupCustomer(string phoneNumber)
         {
             try
@@ -84,7 +84,7 @@ namespace Api.Controllers
 
         // POST: api/Customer/register
         [HttpPost("register")]
-        [Authorize(Roles = "SuperAdmin,StoreManager,Cashier")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Customer>> RegisterCustomer([FromBody] RegisterCustomerRequest request)
         {
             try
@@ -124,7 +124,7 @@ namespace Api.Controllers
 
         // GET: api/Customer/{id}
         [HttpGet("{id}")]
-        [Authorize(Roles = "SuperAdmin,StoreManager,Cashier")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Customer>> GetCustomer(int id)
         {
             try
@@ -147,7 +147,7 @@ namespace Api.Controllers
 
         // GET: api/Customer
         [HttpGet]
-        [Authorize(Roles = "SuperAdmin,StoreManager")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<Customer>>> GetCustomers()
         {
             try
@@ -167,7 +167,7 @@ namespace Api.Controllers
 
         // PUT: api/Customer/{id}
         [HttpPut("{id}")]
-        [Authorize(Roles = "SuperAdmin,StoreManager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateCustomer(int id, [FromBody] UpdateCustomerRequest request)
         {
             try

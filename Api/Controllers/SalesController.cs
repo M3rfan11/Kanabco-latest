@@ -15,11 +15,13 @@ public class SalesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _auditService;
+    private readonly ILogger<SalesController> _logger;
 
-    public SalesController(ApplicationDbContext context, IAuditService auditService)
+    public SalesController(ApplicationDbContext context, IAuditService auditService, ILogger<SalesController> logger)
     {
         _context = context;
         _auditService = auditService;
+        _logger = logger;
     }
 
     private int GetCurrentUserId()
@@ -40,7 +42,7 @@ public class SalesController : ControllerBase
     /// Get all sales orders
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager,SalesStaff")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<IEnumerable<SalesOrderListResponse>>> GetSalesOrders()
     {
         var currentUserId = GetCurrentUserId();
@@ -49,7 +51,10 @@ public class SalesController : ControllerBase
         IQueryable<SalesOrder> ordersQuery = _context.SalesOrders
             .Include(so => so.CreatedByUser)
             .Include(so => so.ConfirmedByUser)
-            .Include(so => so.SalesItems);
+            .Include(so => so.SalesItems)
+                .ThenInclude(si => si.Product);
+        
+        // Note: PromoCodeUsages are loaded separately for better performance
 
         // Apply store-scoped filtering
         var userRoles = await _context.UserRoles
@@ -78,22 +83,64 @@ public class SalesController : ControllerBase
             return StatusCode(403, new { Message = "You don't have permission to view sales orders" });
         }
 
-        var orders = await ordersQuery
+        var ordersList = await ordersQuery
             .OrderByDescending(so => so.CreatedAt)
-            .Select(so => new SalesOrderListResponse
+            .ToListAsync();
+
+        // Get all promo code usages for these orders
+        var orderIds = ordersList.Select(o => o.Id).ToList();
+        var promoCodeUsages = await _context.PromoCodeUsages
+            .Include(pcu => pcu.PromoCode)
+            .Include(pcu => pcu.User)
+            .Where(pcu => orderIds.Contains(pcu.SalesOrderId))
+            .ToListAsync();
+
+        var orders = ordersList.Select(so => 
+        {
+            var promoCodeUsage = promoCodeUsages.FirstOrDefault(pcu => pcu.SalesOrderId == so.Id);
+            var promoCodeInfo = promoCodeUsage != null ? new PromoCodeUsageInfo
+            {
+                PromoCodeId = promoCodeUsage.PromoCodeId,
+                Code = promoCodeUsage.PromoCode.Code,
+                DiscountAmount = promoCodeUsage.DiscountAmount,
+                UsedAt = promoCodeUsage.UsedAt,
+                UserId = promoCodeUsage.UserId,
+                UserName = promoCodeUsage.User?.FullName ?? (promoCodeUsage.UserId.HasValue ? "Unknown User" : "Guest")
+            } : null;
+
+            return new SalesOrderListResponse
             {
                 Id = so.Id,
                 OrderNumber = so.OrderNumber,
                 CustomerName = so.CustomerName,
+                CustomerEmail = so.CustomerEmail,
+                CustomerPhone = so.CustomerPhone,
+                CustomerAddress = so.CustomerAddress,
                 OrderDate = so.OrderDate,
                 DeliveryDate = so.DeliveryDate,
                 TotalAmount = so.TotalAmount,
+                DownPayment = so.DownPayment,
                 Status = so.Status,
                 PaymentStatus = so.PaymentStatus,
-                CreatedByUserName = so.CreatedByUser.FullName,
-                ConfirmedByUserName = so.ConfirmedByUser != null ? so.ConfirmedByUser.FullName : null
-            })
-            .ToListAsync();
+                Notes = so.Notes,
+                CreatedByUserName = so.CreatedByUser?.FullName ?? "Guest",
+                ConfirmedByUserName = so.ConfirmedByUser != null ? so.ConfirmedByUser.FullName : null,
+                Items = so.SalesItems.Select(si => new SalesItemResponse
+                {
+                    Id = si.Id,
+                    ProductId = si.ProductId,
+                    ProductVariantId = null, // SalesItem doesn't have ProductVariantId in the model
+                    ProductName = si.Product != null ? si.Product.Name : "Unknown Product",
+                    ProductSKU = si.Product != null ? si.Product.SKU : null,
+                    VariantAttributes = null, // Will be populated from variant if needed
+                    Quantity = si.Quantity,
+                    UnitPrice = si.UnitPrice,
+                    TotalPrice = si.TotalPrice,
+                    Unit = si.Unit
+                }).ToList(),
+                PromoCode = promoCodeInfo
+            };
+        }).ToList();
 
         return Ok(orders);
     }
@@ -163,7 +210,7 @@ public class SalesController : ControllerBase
     /// Create a new sales order
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,StoreManager,SalesStaff")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<SalesOrderResponse>> CreateSalesOrder(CreateSalesOrderRequest request)
     {
         if (request.Items == null || !request.Items.Any())
@@ -253,6 +300,7 @@ public class SalesController : ControllerBase
     /// Update a sales order
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> UpdateSalesOrder(int id, UpdateSalesOrderRequest request)
     {
         var order = await _context.SalesOrders.FindAsync(id);
@@ -268,6 +316,8 @@ public class SalesController : ControllerBase
 
         var currentUserId = GetCurrentUserId();
 
+        var oldStatus = order.Status;
+        
         order.CustomerName = request.CustomerName ?? order.CustomerName;
         order.CustomerAddress = request.CustomerAddress ?? order.CustomerAddress;
         order.CustomerPhone = request.CustomerPhone ?? order.CustomerPhone;
@@ -275,8 +325,26 @@ public class SalesController : ControllerBase
         order.DeliveryDate = request.DeliveryDate ?? order.DeliveryDate;
         order.Status = request.Status ?? order.Status;
         order.PaymentStatus = request.PaymentStatus ?? order.PaymentStatus;
+        if (request.DownPayment.HasValue)
+        {
+            order.DownPayment = request.DownPayment.Value;
+        }
         order.Notes = request.Notes ?? order.Notes;
         order.UpdatedAt = DateTime.UtcNow;
+
+        // Create tracking entry if status changed
+        if (!string.IsNullOrEmpty(request.Status) && request.Status != oldStatus)
+        {
+            var tracking = new OrderTracking
+            {
+                OrderId = order.Id,
+                Status = request.Status,
+                Notes = $"Status changed from {oldStatus} to {request.Status}" + (!string.IsNullOrEmpty(request.Notes) ? $". {request.Notes}" : ""),
+                Timestamp = DateTime.UtcNow,
+                UpdatedByUserId = currentUserId
+            };
+            _context.OrderTrackings.Add(tracking);
+        }
 
         _context.Entry(order).State = EntityState.Modified;
         await _context.SaveChangesAsync();
@@ -462,6 +530,170 @@ public class SalesController : ControllerBase
         await _auditService.LogAsync("SalesOrder", order.Id.ToString(), "Deleted", $"Deleted sales order {order.OrderNumber}", null, currentUserId);
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// Get all customers (users who have ordered or signed up)
+    /// </summary>
+    [HttpGet("customers")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<ActionResult<IEnumerable<CustomerSummaryResponse>>> GetCustomers()
+    {
+        try
+        {
+            // Get all registered users (who have signed up) - only Customer role
+            var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
+            var registeredUsers = await _context.Users
+                .Where(u => u.IsActive && u.UserRoles.Any(ur => ur.RoleId == customerRole.Id))
+                .Select(u => new
+                {
+                    Email = u.Email,
+                    FullName = u.FullName,
+                    Phone = (string?)null,
+                    Address = (string?)null,
+                    IsRegistered = true,
+                    UserId = u.Id,
+                    CreatedAt = u.CreatedAt
+                })
+                .ToListAsync();
+
+            // Get unique customers from orders (grouped by email)
+            var orderCustomersByEmail = await _context.SalesOrders
+                .Where(so => !string.IsNullOrEmpty(so.CustomerEmail))
+                .GroupBy(so => so.CustomerEmail!.ToLower())
+                .Select(g => new
+                {
+                    Email = g.Key,
+                    FullName = g.OrderByDescending(so => so.CreatedAt).First().CustomerName ?? "Unknown",
+                    Phone = g.OrderByDescending(so => so.CreatedAt).First().CustomerPhone,
+                    Address = g.OrderByDescending(so => so.CreatedAt).First().CustomerAddress,
+                    OrderCount = g.Count(),
+                    TotalSpent = g.Sum(so => so.TotalAmount),
+                    FirstOrderDate = g.Min(so => so.OrderDate),
+                    LastOrderDate = g.Max(so => so.OrderDate),
+                    CreatedAt = g.Min(so => so.CreatedAt)
+                })
+                .ToListAsync();
+
+            // Get customers by phone (for those without email)
+            var orderCustomersByPhone = await _context.SalesOrders
+                .Where(so => string.IsNullOrEmpty(so.CustomerEmail) && !string.IsNullOrEmpty(so.CustomerPhone))
+                .GroupBy(so => so.CustomerPhone!)
+                .Select(g => new
+                {
+                    Email = (string?)null,
+                    FullName = g.OrderByDescending(so => so.CreatedAt).First().CustomerName ?? "Unknown",
+                    Phone = g.Key,
+                    Address = g.OrderByDescending(so => so.CreatedAt).First().CustomerAddress,
+                    OrderCount = g.Count(),
+                    TotalSpent = g.Sum(so => so.TotalAmount),
+                    FirstOrderDate = g.Min(so => so.OrderDate),
+                    LastOrderDate = g.Max(so => so.OrderDate),
+                    CreatedAt = g.Min(so => so.CreatedAt)
+                })
+                .ToListAsync();
+
+            // Combine customers
+            var customerMap = new Dictionary<string, CustomerSummaryResponse>();
+
+            // Add registered users
+            foreach (var user in registeredUsers)
+            {
+                var key = user.Email?.ToLower() ?? "";
+                if (!string.IsNullOrEmpty(key))
+                {
+                    // Get order stats for this user
+                    var userOrders = await _context.SalesOrders
+                        .Where(so => so.CustomerEmail != null && so.CustomerEmail.ToLower() == key)
+                        .ToListAsync();
+
+                    customerMap[key] = new CustomerSummaryResponse
+                    {
+                        Email = user.Email,
+                        FullName = user.FullName,
+                        Phone = user.Phone,
+                        Address = user.Address,
+                        IsRegistered = true,
+                        UserId = user.UserId,
+                        OrderCount = userOrders.Count,
+                        TotalSpent = userOrders.Sum(o => o.TotalAmount),
+                        FirstOrderDate = userOrders.Any() ? userOrders.Min(o => o.OrderDate) : user.CreatedAt,
+                        LastOrderDate = userOrders.Any() ? userOrders.Max(o => o.OrderDate) : (DateTime?)null,
+                        CreatedAt = user.CreatedAt
+                    };
+                }
+            }
+
+            // Add order customers by email
+            foreach (var orderCustomer in orderCustomersByEmail)
+            {
+                var key = orderCustomer.Email.ToLower();
+                if (customerMap.ContainsKey(key))
+                {
+                    // Merge with existing
+                    var existing = customerMap[key];
+                    existing.OrderCount = orderCustomer.OrderCount;
+                    existing.TotalSpent = orderCustomer.TotalSpent;
+                    if (orderCustomer.Phone != null) existing.Phone = orderCustomer.Phone;
+                    if (orderCustomer.Address != null) existing.Address = orderCustomer.Address;
+                    if (orderCustomer.FirstOrderDate < existing.FirstOrderDate)
+                        existing.FirstOrderDate = orderCustomer.FirstOrderDate;
+                    if (orderCustomer.LastOrderDate > (existing.LastOrderDate ?? DateTime.MinValue))
+                        existing.LastOrderDate = orderCustomer.LastOrderDate;
+                }
+                else
+                {
+                    customerMap[key] = new CustomerSummaryResponse
+                    {
+                        Email = orderCustomer.Email,
+                        FullName = orderCustomer.FullName,
+                        Phone = orderCustomer.Phone,
+                        Address = orderCustomer.Address,
+                        IsRegistered = false,
+                        UserId = null,
+                        OrderCount = orderCustomer.OrderCount,
+                        TotalSpent = orderCustomer.TotalSpent,
+                        FirstOrderDate = orderCustomer.FirstOrderDate,
+                        LastOrderDate = orderCustomer.LastOrderDate,
+                        CreatedAt = orderCustomer.CreatedAt
+                    };
+                }
+            }
+
+            // Add customers by phone (no email)
+            foreach (var orderCustomer in orderCustomersByPhone)
+            {
+                var key = $"phone_{orderCustomer.Phone}";
+                if (!customerMap.ContainsKey(key))
+                {
+                    customerMap[key] = new CustomerSummaryResponse
+                    {
+                        Email = orderCustomer.Email,
+                        FullName = orderCustomer.FullName,
+                        Phone = orderCustomer.Phone,
+                        Address = orderCustomer.Address,
+                        IsRegistered = false,
+                        UserId = null,
+                        OrderCount = orderCustomer.OrderCount,
+                        TotalSpent = orderCustomer.TotalSpent,
+                        FirstOrderDate = orderCustomer.FirstOrderDate,
+                        LastOrderDate = orderCustomer.LastOrderDate,
+                        CreatedAt = orderCustomer.CreatedAt
+                    };
+                }
+            }
+
+            var customers = customerMap.Values
+                .OrderByDescending(c => c.LastOrderDate ?? c.CreatedAt)
+                .ToList();
+
+            return Ok(customers);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving customers");
+            return StatusCode(500, new { message = "An error occurred while retrieving customers" });
+        }
     }
 
     /// <summary>

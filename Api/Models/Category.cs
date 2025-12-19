@@ -20,6 +20,7 @@ namespace Api.Models
         public DateTime? UpdatedAt { get; set; }
         
         // Navigation properties
-        public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+        public virtual ICollection<Product> Products { get; set; } = new List<Product>(); // Legacy - products with this as primary category
+        public virtual ICollection<ProductCategory> ProductCategories { get; set; } = new List<ProductCategory>(); // Many-to-many relationship
     }
 }

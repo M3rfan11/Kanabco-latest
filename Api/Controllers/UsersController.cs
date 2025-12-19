@@ -25,7 +25,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<IEnumerable<UserResponse>>> GetUsers()
     {
         try
@@ -84,7 +84,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserResponse>> GetUser(int id)
     {
         try
@@ -149,7 +149,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserResponse>> CreateUser([FromBody] CreateUserRequest request)
     {
         try
@@ -171,6 +171,21 @@ public class UsersController : ControllerBase
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+
+            // Assign default "Customer" role if no roles are explicitly provided
+            // (SuperAdmin can assign roles manually through role management)
+            var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
+            if (customerRole != null)
+            {
+                var userRole = new Api.Models.UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = customerRole.Id,
+                    AssignedAt = DateTime.UtcNow
+                };
+                _context.UserRoles.Add(userRole);
+                await _context.SaveChangesAsync();
+            }
 
             // Load the user with roles for response
             await _context.Entry(user)
@@ -208,7 +223,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserResponse>> UpdateUser(int id, [FromBody] UpdateUserRequest request)
     {
         try
@@ -298,7 +313,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult> DeleteUser(int id)
     {
         try
@@ -455,7 +470,7 @@ public class UsersController : ControllerBase
     /// Assign user to store (StoreManager only)
     /// </summary>
     [HttpPost("{id}/assign-store")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult> AssignUserToStore(int id, [FromBody] AssignUserToStoreRequest request)
     {
         try
@@ -535,7 +550,7 @@ public class UsersController : ControllerBase
     /// Remove user from store (StoreManager only)
     /// </summary>
     [HttpPost("{id}/remove-store")]
-    [Authorize(Roles = "SuperAdmin,StoreManager")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult> RemoveUserFromStore(int id)
     {
         try
